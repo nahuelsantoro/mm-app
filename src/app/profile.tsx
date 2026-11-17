@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -12,49 +12,68 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
-type Companion = 'Mora' | 'Mailo';
-
-type ChildProfile = {
-  id: number;
-  name: string;
-  companion: Companion;
-};
+import { createProfile, getProfiles, type ChildProfile, type Companion } from '@/services/reading-storage';
 
 export default function ProfileSelectionScreen() {
   const [profiles, setProfiles] = useState<ChildProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [childName, setChildName] = useState('');
   const [companion, setCompanion] = useState<Companion>('Mora');
 
-  function createProfile() {
+  useEffect(() => {
+    let isActive = true;
+
+    getProfiles()
+      .then((savedProfiles) => {
+        if (isActive) setProfiles(savedProfiles);
+      })
+      .catch(() => {
+        Alert.alert('No pudimos cargar los perfiles', 'Volvé a intentarlo en un momento.');
+      })
+      .finally(() => {
+        if (isActive) setLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  async function handleCreateProfile() {
     const name = childName.trim();
 
     if (!name) {
       Alert.alert('¡Un momento!', 'Escribí el nombre del niño o niña.');
       return;
     }
+    if (saving) return;
 
-    const newProfile: ChildProfile = {
-      id: Date.now(),
-      name,
-      companion,
-    };
-
-    setProfiles((current) => [...current, newProfile]);
-    setChildName('');
-    setCompanion('Mora');
-    setShowForm(false);
+    setSaving(true);
+    try {
+      const newProfile = await createProfile(name, companion);
+      setProfiles((current) => [...current, newProfile]);
+      setChildName('');
+      setCompanion('Mora');
+      setShowForm(false);
+    } catch {
+      Alert.alert('No pudimos guardar el perfil', 'Probá de nuevo en un momento.');
+    } finally {
+      setSaving(false);
+    }
   }
 
-function selectProfile(profile: ChildProfile) {
-  router.push({
-    pathname: '/library',
-    params: {
-      name: profile.name,
-      companion: profile.companion,
-    },
-  });
-}
+  function selectProfile(profile: ChildProfile) {
+    router.push({
+      pathname: '/library',
+      params: {
+        profileId: profile.id.toString(),
+        name: profile.name,
+        companion: profile.companion,
+      },
+    });
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -71,7 +90,9 @@ function selectProfile(profile: ChildProfile) {
           </Text>
         </View>
 
-        {profiles.map((profile) => (
+        {loading ? (
+          <Text style={styles.loading}>Cargando perfiles...</Text>
+        ) : profiles.map((profile) => (
           <Pressable
             key={profile.id}
             onPress={() => selectProfile(profile)}
@@ -131,8 +152,8 @@ function selectProfile(profile: ChildProfile) {
               </Pressable>
             </View>
 
-            <Pressable style={styles.createButton} onPress={createProfile}>
-              <Text style={styles.createButtonText}>Crear perfil</Text>
+            <Pressable disabled={saving} style={[styles.createButton, saving && styles.disabled]} onPress={handleCreateProfile}>
+              <Text style={styles.createButtonText}>{saving ? 'Guardando...' : 'Crear perfil'}</Text>
             </Pressable>
 
             <Pressable onPress={() => setShowForm(false)}>
@@ -272,4 +293,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
+  loading: { color: '#887B91', textAlign: 'center', paddingVertical: 20, fontSize: 15 },
+  disabled: { opacity: 0.65 },
 });

@@ -1,6 +1,8 @@
 
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,46 +11,52 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const stories = [
-  {
-    id: 1,
-    title: 'La aventura del bosque',
-    description: 'Un paseo lleno de sorpresas.',
-    emoji: '🌳',
-    color: '#DDF1D8',
-    level: 'Principiante',
-  },
-  {
-    id: 2,
-    title: 'El tesoro escondido',
-    description: 'Una búsqueda muy especial.',
-    emoji: '🗺️',
-    color: '#FCE6C8',
-    level: 'Principiante',
-  },
-  {
-    id: 3,
-    title: 'Un amigo de las estrellas',
-    description: 'Una historia que viene del cielo.',
-    emoji: '🚀',
-    color: '#E9DFF6',
-    level: 'Principiante',
-  },
-  {
-    id: 4,
-    title: 'El misterio del jardín',
-    description: 'Pequeños detectives en acción.',
-    emoji: '🌻',
-    color: '#F9DFE2',
-    level: 'Principiante',
-  },
-];
+import { stories } from '@/constants/stories';
+import {
+  getProfileProgress,
+  getProfileStarCount,
+  type ReadingProgress,
+} from '@/services/reading-storage';
 
 export default function LibraryScreen() {
-  const { name, companion } = useLocalSearchParams<{
+  const { name, companion, profileId } = useLocalSearchParams<{
     name: string;
     companion: string;
+    profileId: string;
   }>();
+  const [progress, setProgress] = useState<ReadingProgress[]>([]);
+  const [starCount, setStarCount] = useState(0);
+  const [isProgressLoading, setIsProgressLoading] = useState(true);
+  const profileIdNumber = Number(profileId);
+  const hasProfileId = Number.isInteger(profileIdNumber) && profileIdNumber > 0;
+
+  useFocusEffect(useCallback(() => {
+    let isActive = true;
+
+    if (!hasProfileId) return;
+
+    Promise.all([getProfileProgress(profileIdNumber), getProfileStarCount(profileIdNumber)])
+      .then(([savedProgress, totalStars]) => {
+        if (isActive) {
+          setProgress(savedProgress);
+          setStarCount(totalStars);
+        }
+      })
+      .catch(() => {
+        Alert.alert('No pudimos cargar tu progreso', 'Podés elegir un cuento para seguir leyendo.');
+      })
+      .finally(() => {
+        if (isActive) setIsProgressLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [hasProfileId, profileIdNumber]));
+
+  const loadingProgress = hasProfileId && isProgressLoading;
+
+  const progressByStoryId = new Map(progress.map((item) => [item.storyId, item]));
 
   const companionEmoji = companion === 'Mailo' ? '🐕' : '🐶';
 
@@ -68,6 +76,7 @@ export default function LibraryScreen() {
             <Text style={styles.subtitle}>
               ¿Qué historia vamos a descubrir hoy?
             </Text>
+            <Text style={styles.starCount}>⭐ {starCount} {starCount === 1 ? 'estrella' : 'estrellas'}</Text>
           </View>
           <View style={styles.companion}>
             <Text style={styles.companionEmoji}>{companionEmoji}</Text>
@@ -83,36 +92,48 @@ export default function LibraryScreen() {
         </View>
 
         <View style={styles.stories}>
-          {stories.map((story) => (
-            <Pressable
-              key={story.id}
-              onPress={() =>
-                router.push({
-                  pathname: '/story',
-                  params: { id: story.id.toString(), title: story.title },
-                })
-              }
-              style={({ pressed }) => [
-                styles.storyCard,
-                { backgroundColor: story.color },
-                pressed && styles.pressed,
-              ]}
-            >
-              <View style={styles.storyIllustration}>
-                <Text style={styles.storyEmoji}>{story.emoji}</Text>
-              </View>
+          {stories.map((story) => {
+            const savedProgress = progressByStoryId.get(story.id.toString());
 
-              <View style={styles.storyInfo}>
-                <Text style={styles.storyLevel}>{story.level}</Text>
-                <Text style={styles.storyTitle}>{story.title}</Text>
-                <Text style={styles.storyDescription}>
-                  {story.description}
-                </Text>
-              </View>
+            return (
+              <Pressable
+                key={story.id}
+                disabled={loadingProgress}
+                onPress={() =>
+                  router.push({
+                    pathname: '/story',
+                    params: {
+                      id: story.id,
+                      profileId: profileIdNumber.toString(),
+                    },
+                  })
+                }
+                style={({ pressed }) => [
+                  styles.storyCard,
+                  { backgroundColor: story.color },
+                  pressed && styles.pressed,
+                ]}>
+                <View style={styles.storyIllustration}>
+                  <Text style={styles.storyEmoji}>{story.emoji}</Text>
+                </View>
 
-              <Text style={styles.storyArrow}>›</Text>
-            </Pressable>
-          ))}
+                <View style={styles.storyInfo}>
+                  <Text style={styles.storyLevel}>{story.level}</Text>
+                  <Text style={styles.storyTitle}>{story.title}</Text>
+                  <Text style={styles.storyDescription}>{story.description}</Text>
+                  {savedProgress && (
+                    <Text style={styles.progressLabel}>
+                      {savedProgress.completed
+                        ? '¡Cuento terminado!'
+                        : `Continuar · página ${savedProgress.pageIndex + 1} de ${story.pages.length}`}
+                    </Text>
+                  )}
+                </View>
+
+                <Text style={styles.storyArrow}>›</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <View style={styles.footerCard}>
@@ -154,6 +175,7 @@ const styles = StyleSheet.create({
   welcomeText: { flex: 1, gap: 7 },
   greeting: { color: '#41344F', fontSize: 23, fontWeight: '900' },
   subtitle: { color: '#786D7C', fontSize: 14, lineHeight: 21 },
+  starCount: { color: '#8B5A18', fontSize: 13, fontWeight: '900', marginTop: 3 },
   companion: { alignItems: 'center', gap: 3 },
   companionEmoji: { fontSize: 42 },
   companionName: { color: '#594A6E', fontSize: 12, fontWeight: '800' },
@@ -187,6 +209,7 @@ const styles = StyleSheet.create({
   },
   storyTitle: { color: '#41344F', fontSize: 15, fontWeight: '900' },
   storyDescription: { color: '#786D7C', fontSize: 12 },
+  progressLabel: { color: '#7553A6', fontSize: 11, fontWeight: '800', marginTop: 3 },
   storyArrow: { color: '#7553A6', fontSize: 27, fontWeight: '700' },
   pressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
   footerCard: {

@@ -32,6 +32,18 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      "expo-sqlite",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "M&M usa el micrófono para escuchar la lectura en voz alta.",
+          "speechRecognitionPermission": "El sistema de voz del dispositivo procesa tu lectura. M&M no almacena el audio ni la transcripción.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts"
+          ]
+        }
       ]
     ],
     "experiments": {
