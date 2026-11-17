@@ -1,3 +1,4 @@
+
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { useColorScheme } from 'react-native';
 
@@ -9,6 +10,8 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="profile" />
+        <Stack.Screen name="library" />
+        <Stack.Screen name="story" />
       </Stack>
     </ThemeProvider>
   );
